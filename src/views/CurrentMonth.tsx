@@ -1,9 +1,11 @@
 import { useState } from "react";
 import { AnimatePresence, motion } from "motion/react";
 import {
+  isMonthEmpty,
   monthIncome,
   monthResult,
   monthSpent,
+  nextMonthName,
   selectActiveMonth,
   sumRows,
   useStore,
@@ -12,7 +14,9 @@ import { formatEur, formatSignedEur } from "../money";
 import { CategoryTable } from "../components/CategoryTable";
 import { CloseMonthDialog } from "../components/CloseMonthDialog";
 import { EditableText } from "../components/EditableText";
-import { IconLock, IconPlus, IconUnlock } from "../components/icons";
+import { InboxTable } from "../components/InboxTable";
+import { DeleteMonthDialog } from "../components/DeleteMonthDialog";
+import { IconLock, IconPlus, IconTrash, IconUnlock } from "../components/icons";
 
 export function CurrentMonth() {
   const month = useStore(selectActiveMonth);
@@ -28,7 +32,10 @@ export function CurrentMonth() {
   const closeMonth = useStore((s) => s.closeMonth);
   const reopenMonth = useStore((s) => s.reopenMonth);
 
+  const deleteMonth = useStore((s) => s.deleteMonth);
+
   const [closing, setClosing] = useState(false);
+  const [deleting, setDeleting] = useState(false);
 
   if (!month) {
     return (
@@ -43,6 +50,12 @@ export function CurrentMonth() {
   const result = monthResult(month);
   const positive = result >= 0;
   const pct = income > 0 ? Math.min(100, (spent / income) * 100) : spent > 0 ? 100 : 0;
+  const emptyMonth = months.find(isMonthEmpty);
+  const newMonthTitle = emptyMonth
+    ? emptyMonth.id === month.id
+      ? "Questo mese è ancora vuoto"
+      : `Vai al mese vuoto: ${emptyMonth.name}`
+    : `Nuovo mese: ${nextMonthName(months)}`;
 
   return (
     <div className="flex flex-col h-full">
@@ -75,10 +88,19 @@ export function CurrentMonth() {
 
         <button
           onClick={() => addMonth()}
-          title="Nuovo mese"
-          className="grid place-items-center h-9 w-9 rounded-lg border border-ink-700 text-slate-300 hover:text-white hover:border-brand-500 transition"
+          disabled={emptyMonth?.id === month.id}
+          title={newMonthTitle}
+          className="grid place-items-center h-9 w-9 rounded-lg border border-ink-700 text-slate-300 hover:text-white hover:border-brand-500 transition disabled:opacity-40 disabled:pointer-events-none"
         >
           <IconPlus size={18} />
+        </button>
+
+        <button
+          onClick={() => setDeleting(true)}
+          title="Elimina questo mese"
+          className="grid place-items-center h-9 w-9 rounded-lg border border-ink-700 text-slate-400 hover:text-bad-400 hover:border-bad-500/60 transition"
+        >
+          <IconTrash size={17} />
         </button>
 
         {month.closed ? (
@@ -131,6 +153,8 @@ export function CurrentMonth() {
             />
           </div>
         </div>
+
+        <InboxTable month={month} />
 
         {/* income table */}
         <div className="mb-7">
@@ -199,6 +223,15 @@ export function CurrentMonth() {
           </AnimatePresence>
         </div>
       </div>
+
+      <DeleteMonthDialog
+        month={deleting ? month : null}
+        onClose={() => setDeleting(false)}
+        onConfirm={(id) => {
+          deleteMonth(id);
+          setDeleting(false);
+        }}
+      />
 
       <CloseMonthDialog
         open={closing}

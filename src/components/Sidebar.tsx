@@ -2,6 +2,7 @@ import { motion } from "motion/react";
 import { accountTotal, useStore } from "../store";
 import { formatSignedEur } from "../money";
 import { IconCalendar, IconLedger, IconWallet } from "./icons";
+import { ImportStatement } from "./ImportStatement";
 
 const NAV = [
   { key: "month", label: "Mese corrente", icon: IconCalendar },
@@ -57,6 +58,8 @@ export function Sidebar() {
           );
         })}
       </nav>
+
+      <ImportStatement />
 
       <div className="mt-auto rounded-2xl border border-ink-700 bg-ink-850/80 p-4">
         <div className="text-[11px] uppercase tracking-wide text-slate-500 mb-1">

@@ -1,3 +1,4 @@
+import { useState } from "react";
 import { motion } from "motion/react";
 import {
   monthIncome,
@@ -5,7 +6,9 @@ import {
   monthSpent,
   useStore,
 } from "../store";
+import type { Month } from "../types";
 import { formatEur, formatSignedEur } from "../money";
+import { DeleteMonthDialog } from "../components/DeleteMonthDialog";
 import { IconCheck, IconPlus, IconTrash } from "../components/icons";
 
 export function Summary() {
@@ -13,6 +16,7 @@ export function Summary() {
   const setActiveMonth = useStore((s) => s.setActiveMonth);
   const addMonth = useStore((s) => s.addMonth);
   const deleteMonth = useStore((s) => s.deleteMonth);
+  const [deleting, setDeleting] = useState<Month | null>(null);
 
   const ordered = [...months].reverse();
   const totals = months.reduce(
@@ -87,9 +91,9 @@ export function Summary() {
                     tabIndex={0}
                     onClick={(e) => {
                       e.stopPropagation();
-                      if (confirm(`Eliminare il mese «${m.name}»?`)) deleteMonth(m.id);
+                      setDeleting(m);
                     }}
-                    className="text-slate-700 hover:text-bad-400 opacity-0 group-hover:opacity-100 transition cursor-pointer"
+                    className="text-slate-600 hover:text-bad-400 transition cursor-pointer"
                     title="Elimina mese"
                   >
                     <IconTrash size={15} />
@@ -109,6 +113,15 @@ export function Summary() {
           })}
         </div>
       </div>
+
+      <DeleteMonthDialog
+        month={deleting}
+        onClose={() => setDeleting(null)}
+        onConfirm={(id) => {
+          deleteMonth(id);
+          setDeleting(null);
+        }}
+      />
     </div>
   );
 }
