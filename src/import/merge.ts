@@ -97,26 +97,40 @@ export interface MergeResult {
   skipped: number;
 }
 
+export interface MergeRange {
+  /** used when the month's salary is not in the file: take movements after this date */
+  afterDate?: string;
+  /** exclusive upper bound (seq of the next salary) for a closing import */
+  untilSeq?: number;
+}
+
+/** The salary row a month was started from, if it came from an import. */
+export function monthSalaryRef(m: Month): TxRef | undefined {
+  return m.income.find((r) => r.tx && r.tx.key === m.salaryTxKey)?.tx;
+}
+
 /**
  * Merge the movements that follow `salary` into `month`.
  * - the salary itself becomes an income row (once);
  * - new movements go to the inbox, pre-filled from remembered rules;
  * - a "non contabilizzato" movement that later shows up booked (with a new
  *   description) is updated in place, keeping the user's classification.
+ * Without `salary` (closing a month whose salary is older than the file)
+ * the lower bound is `range.afterDate`.
  */
 export function mergeStatement(
   month: Month,
   txs: BankTx[],
-  salary: BankTx,
+  salary: BankTx | null,
   rules: Record<string, ClassifyRule>,
   newId: () => string,
+  range: MergeRange = {},
 ): MergeResult {
   const keys = txKeys(txs);
   const keyOf = new Map(txs.map((tx, i) => [tx, keys[i]]));
   const fileKeys = new Set(keys);
-  const salaryKey = keyOf.get(salary)!;
 
-  let m: Month = { ...month, inbox: [...(month.inbox ?? [])], salaryTxKey: salaryKey };
+  let m: Month = { ...month, inbox: [...(month.inbox ?? [])] };
   const ignored = new Set(month.ignoredTxKeys ?? []);
   let added = 0;
   let updated = 0;
@@ -124,14 +138,21 @@ export function mergeStatement(
 
   const known = () => new Set(monthRefs(m).map((r) => r.key));
 
-  if (!known().has(salaryKey)) {
-    m.income = [
-      ...m.income,
-      { id: newId(), name: "Stipendio", amount: salary.amount, tx: toRef(salary, salaryKey) },
-    ];
+  if (salary) {
+    const salaryKey = keyOf.get(salary)!;
+    m.salaryTxKey = salaryKey;
+    if (!known().has(salaryKey)) {
+      m.income = [
+        ...m.income,
+        { id: newId(), name: "Stipendio", amount: salary.amount, tx: toRef(salary, salaryKey) },
+      ];
+    }
   }
 
-  const after = txs.filter((tx) => tx.seq > salary.seq).sort((a, b) => a.seq - b.seq);
+  const inRange = (tx: BankTx) =>
+    (salary ? tx.seq > salary.seq : range.afterDate != null && tx.date > range.afterDate) &&
+    (range.untilSeq == null || tx.seq < range.untilSeq);
+  const after = txs.filter(inRange).sort((a, b) => a.seq - b.seq);
   const present = known();
   // pending movements that disappeared from the new file: candidates for reconciliation
   const orphans = monthRefs(m).filter((r) => !r.booked && !fileKeys.has(r.key));

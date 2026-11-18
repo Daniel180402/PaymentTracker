@@ -128,6 +128,41 @@ describe("mergeStatement", () => {
     expect(row.tx).toMatchObject({ description: "Q8 Mogliano", booked: true, date: "2026-03-29" });
   });
 
+  describe("closing import (file contains the next salary)", () => {
+    const closing = [
+      ...txs,
+      tx(5, "2026-04-26", "Stipendio O Pensione", 232000, salaryCat),
+      tx(6, "2026-04-27", "Bar Centrale", -250),
+    ];
+    const next = findLatestSalary(closing)!;
+
+    it("fills the old month only up to the new salary", () => {
+      const old = mergeStatement(emptyMonth(), txs, salary, {}, id).month;
+      const r = mergeStatement(old, closing, salary, {}, id, { untilSeq: next.seq });
+      expect(r).toMatchObject({ added: 0, skipped: 3 });
+      expect(r.month.inbox!.map((i) => i.tx.description)).not.toContain("Bar Centrale");
+      expect(r.month.salaryTxKey).toBe(old.salaryTxKey);
+    });
+
+    it("uses the old salary date when that salary is not in the file", () => {
+      const old = mergeStatement(emptyMonth(), txs, salary, {}, id).month;
+      const later = closing.filter((t) => t.seq >= 3); // file starts after the old salary
+      const r = mergeStatement(old, later, null, {}, id, {
+        afterDate: "2026-03-27",
+        untilSeq: next.seq,
+      });
+      // Lidl and Storno were already there; nothing past the new salary is added
+      expect(r).toMatchObject({ added: 0, skipped: 2 });
+      expect(r.month.salaryTxKey).toBe(old.salaryTxKey);
+    });
+
+    it("starts the new month from the new salary", () => {
+      const r = mergeStatement(emptyMonth(), closing, next, {}, id);
+      expect(r.month.income[0].amount).toBe(232000);
+      expect(r.month.inbox!.map((i) => i.tx.description)).toEqual(["Bar Centrale"]);
+    });
+  });
+
   it("pre-fills notes from remembered rules", () => {
     const rules = { "lidl 237": { note: "Spesa", target: "Bisogni" } };
     const r = mergeStatement(emptyMonth(), txs, salary, rules, id);
