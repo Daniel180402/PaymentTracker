@@ -4,7 +4,7 @@ import type { Row } from "../types";
 import { formatEur, parseEur } from "../money";
 import { AmountInput } from "./AmountInput";
 import { EditableText } from "./EditableText";
-import { IconTrash } from "./icons";
+import { IconBank, IconTrash } from "./icons";
 
 interface Props {
   title: string;
@@ -72,6 +72,15 @@ export function CategoryTable({
               transition={{ duration: 0.16 }}
               className="group flex items-center gap-2 px-4 h-10"
             >
+              {r.tx && (
+                <span
+                  className="shrink-0 tabular text-[11px] text-slate-500 flex items-center gap-1"
+                  title={`${r.tx.description} · ${r.tx.bankCategory}`}
+                >
+                  <IconBank size={12} />
+                  {r.tx.date.slice(8, 10)}/{r.tx.date.slice(5, 7)}
+                </span>
+              )}
               <EditableText
                 value={r.name}
                 onCommit={(name) => onUpsert(r.id, { name })}
@@ -90,7 +99,7 @@ export function CategoryTable({
                 <button
                   onClick={() => onDeleteRow(r.id)}
                   className="text-slate-700 hover:text-bad-400 opacity-0 group-hover:opacity-100 transition"
-                  title="Elimina voce"
+                  title={r.tx ? "Rimetti da classificare" : "Elimina voce"}
                 >
                   <IconTrash size={14} />
                 </button>

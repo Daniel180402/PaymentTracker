@@ -12,6 +12,7 @@ import { formatEur, formatSignedEur } from "../money";
 import { CategoryTable } from "../components/CategoryTable";
 import { CloseMonthDialog } from "../components/CloseMonthDialog";
 import { EditableText } from "../components/EditableText";
+import { InboxTable } from "../components/InboxTable";
 import { IconLock, IconPlus, IconUnlock } from "../components/icons";
 
 export function CurrentMonth() {
@@ -131,6 +132,8 @@ export function CurrentMonth() {
             />
           </div>
         </div>
+
+        <InboxTable month={month} />
 
         {/* income table */}
         <div className="mb-7">
