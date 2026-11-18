@@ -71,79 +71,123 @@ function InboxRow({ month, item }: { month: Month; item: InboxItem }) {
     item.suggestion === INCOME_TARGET ||
     month.sections.some((s) => s.name === item.suggestion);
 
-  const send = (target: string) => {
-    if (note !== item.note) setInboxNote(month.id, item.id, note);
+  /** `label` names the row when the user did not write anything. */
+  const send = (target: string, label?: string) => {
+    const finalNote = note.trim() || label || "";
+    if (finalNote !== item.note) setInboxNote(month.id, item.id, finalNote);
     classifyInbox(month.id, item.id, target);
   };
 
   return (
-    <div className="grid grid-cols-[3.25rem_minmax(0,1.3fr)_minmax(0,1fr)_9.5rem_6.5rem_3.5rem] items-center gap-3 px-4 py-2.5">
-      <span className="tabular text-xs text-slate-500">{fmtDate(item.tx.date)}</span>
+    <div className={credit ? "bg-good-500/[0.04]" : undefined}>
+      <div className="grid grid-cols-[3.25rem_minmax(0,1.3fr)_minmax(0,1fr)_9.5rem_6.5rem_3.5rem] items-center gap-3 px-4 py-2.5">
+        <span className="tabular text-xs text-slate-500">{fmtDate(item.tx.date)}</span>
 
-      <div className="min-w-0" title={item.tx.description}>
-        <div className="text-sm text-slate-200 truncate">{cleanLabel(item.tx.description)}</div>
-        <div className="flex items-center gap-1.5 text-[11px] text-slate-500 truncate">
-          <IconBank size={11} />
-          <span className="truncate">{item.tx.bankCategory}</span>
-          {!item.tx.booked && (
-            <span className="shrink-0 rounded px-1 bg-ink-700 text-slate-400">in attesa</span>
+        <div className="min-w-0" title={item.tx.description}>
+          <div className="text-sm text-slate-200 truncate">{cleanLabel(item.tx.description)}</div>
+          <div className="flex items-center gap-1.5 text-[11px] text-slate-500 truncate">
+            <IconBank size={11} />
+            <span className="truncate">{item.tx.bankCategory}</span>
+            {!item.tx.booked && (
+              <span className="shrink-0 rounded px-1 bg-ink-700 text-slate-400">in attesa</span>
+            )}
+          </div>
+        </div>
+
+        <input
+          value={note}
+          disabled={disabled}
+          onChange={(e) => setNote(e.target.value)}
+          onBlur={() => note !== item.note && setInboxNote(month.id, item.id, note)}
+          onKeyDown={(e) => {
+            if (e.key === "Enter" && item.suggestion && suggestionValid) send(item.suggestion);
+          }}
+          placeholder="Cos'è?"
+          className="rounded-lg border border-ink-700 bg-ink-900/60 px-2.5 py-1.5 text-sm outline-none focus:border-brand-500 placeholder:text-slate-600"
+        />
+
+        <select
+          value=""
+          disabled={disabled}
+          onChange={(e) => e.target.value && send(e.target.value)}
+          className="rounded-lg border border-ink-700 bg-ink-850 px-2 py-1.5 text-sm outline-none focus:border-brand-500"
+        >
+          <option value="">{suggestionValid ? `→ ${suggestionLabel}` : "Sposta in…"}</option>
+          <option value={INCOME_TARGET}>Entrate</option>
+          {month.sections.map((s) => (
+            <option key={s.id} value={s.id}>
+              {s.name}
+            </option>
+          ))}
+        </select>
+
+        <span
+          className={`tabular text-sm text-right font-medium ${credit ? "text-good-400" : "text-slate-100"}`}
+        >
+          {formatSignedEur(item.tx.amount)}
+        </span>
+
+        <div className="flex justify-end gap-1.5">
+          {item.suggestion && suggestionValid && !disabled && (
+            <button
+              onClick={() => send(item.suggestion!)}
+              title={`Conferma in ${suggestionLabel}`}
+              className="text-brand-400 hover:text-good-400 transition"
+            >
+              <IconCheck size={16} />
+            </button>
+          )}
+          {!disabled && (
+            <button
+              onClick={() => ignoreInbox(month.id, item.id)}
+              title="Ignora questo movimento"
+              className="text-slate-600 hover:text-bad-400 transition"
+            >
+              <IconX size={16} />
+            </button>
           )}
         </div>
       </div>
+      {credit && !disabled && <CreditKinds month={month} onPick={send} />}
+    </div>
+  );
+}
 
-      <input
-        value={note}
-        disabled={disabled}
-        onChange={(e) => setNote(e.target.value)}
-        onBlur={() => note !== item.note && setInboxNote(month.id, item.id, note)}
-        onKeyDown={(e) => {
-          if (e.key === "Enter" && item.suggestion && suggestionValid) send(item.suggestion);
-        }}
-        placeholder="Cos'è?"
-        className="rounded-lg border border-ink-700 bg-ink-900/60 px-2.5 py-1.5 text-sm outline-none focus:border-brand-500 placeholder:text-slate-600"
-      />
+/** Credits (bonifici ricevuti, rimborsi, 13ª…) are not obvious: ask what they are. */
+const CREDIT_KINDS = ["Contributo casa", "13ª / 14ª", "Rimborso spese", "Regalo", "Altra entrata"];
 
+function CreditKinds({
+  month,
+  onPick,
+}: {
+  month: Month;
+  onPick: (target: string, label?: string) => void;
+}) {
+  return (
+    <div className="flex flex-wrap items-center gap-1.5 pl-[4.75rem] pr-4 pb-2.5 -mt-1">
+      <span className="text-[11px] text-slate-500 mr-1">Che entrata è?</span>
+      {CREDIT_KINDS.map((k) => (
+        <button
+          key={k}
+          onClick={() => onPick(INCOME_TARGET, k)}
+          className="rounded-full border border-good-500/30 px-2.5 py-0.5 text-xs text-good-400 hover:bg-good-500/10 transition"
+        >
+          {k}
+        </button>
+      ))}
       <select
         value=""
-        disabled={disabled}
-        onChange={(e) => e.target.value && send(e.target.value)}
-        className="rounded-lg border border-ink-700 bg-ink-850 px-2 py-1.5 text-sm outline-none focus:border-brand-500"
+        onChange={(e) => e.target.value && onPick(e.target.value, "Rimborso")}
+        title="Un reso o storno riduce la spesa di quella categoria invece di aumentare le entrate"
+        className="rounded-full border border-ink-600 bg-ink-850 px-2.5 py-0.5 text-xs text-slate-300 outline-none focus:border-brand-500"
       >
-        <option value="">{suggestionValid ? `→ ${suggestionLabel}` : "Sposta in…"}</option>
-        <option value={INCOME_TARGET}>Entrate</option>
+        <option value="">Storno di una spesa in…</option>
         {month.sections.map((s) => (
           <option key={s.id} value={s.id}>
             {s.name}
           </option>
         ))}
       </select>
-
-      <span
-        className={`tabular text-sm text-right font-medium ${credit ? "text-good-400" : "text-slate-100"}`}
-      >
-        {formatSignedEur(item.tx.amount)}
-      </span>
-
-      <div className="flex justify-end gap-1.5">
-        {item.suggestion && suggestionValid && !disabled && (
-          <button
-            onClick={() => send(item.suggestion!)}
-            title={`Conferma in ${suggestionLabel}`}
-            className="text-brand-400 hover:text-good-400 transition"
-          >
-            <IconCheck size={16} />
-          </button>
-        )}
-        {!disabled && (
-          <button
-            onClick={() => ignoreInbox(month.id, item.id)}
-            title="Ignora questo movimento"
-            className="text-slate-600 hover:text-bad-400 transition"
-          >
-            <IconX size={16} />
-          </button>
-        )}
-      </div>
     </div>
   );
 }

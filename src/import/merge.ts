@@ -180,7 +180,8 @@ export function mergeStatement(
       id: newId(),
       tx: toRef(tx, key),
       note: rule?.note ?? "",
-      suggestion: rule?.target ?? (tx.amount > 0 ? INCOME_TARGET : undefined),
+      // credits are never suggested blindly: the user is asked what they are
+      suggestion: rule?.target,
     };
     m.inbox = [...(m.inbox ?? []), item];
     added++;

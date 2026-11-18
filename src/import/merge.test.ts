@@ -87,7 +87,7 @@ describe("mergeStatement", () => {
       "Lidl 237",
       "Storno Pagamento Pos",
     ]);
-    expect(r.month.inbox![2].suggestion).toBe("income");
+    expect(r.month.inbox![2].suggestion).toBeUndefined();
     expect(r).toMatchObject({ added: 3, updated: 0, skipped: 0 });
   });
 
