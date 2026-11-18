@@ -1,7 +1,7 @@
 import { create } from "zustand";
 import type { AppData, InboxItem, LedgerEntry, Month, Row, Section } from "./types";
 import { DATA_VERSION } from "./types";
-import { loadData, saveData } from "./storage";
+import { loadData, onSync, saveData } from "./storage";
 import type { ParsedStatement } from "./import/types";
 import {
   INCOME_TARGET,
@@ -178,6 +178,9 @@ interface State {
   data: AppData;
   loaded: boolean;
   view: View;
+  /** message about syncing with the home server, shown as a banner */
+  syncNotice: { tone: "info" | "warn"; text: string } | null;
+  dismissSyncNotice: () => void;
 
   init: () => Promise<void>;
   setView: (v: View) => void;
@@ -320,11 +323,9 @@ function rowToInbox(r: Row): InboxItem[] {
   return r.tx ? [{ id: r.id, tx: r.tx, note: r.name === cleanLabel(r.tx.description) ? "" : r.name }] : [];
 }
 
-let saveTimer: ReturnType<typeof setTimeout> | null = null;
-
+/** Saving is debounced and queued inside storage.ts. */
 function persist(data: AppData) {
-  if (saveTimer) clearTimeout(saveTimer);
-  saveTimer = setTimeout(() => void saveData(data), 250);
+  saveData(data);
 }
 
 /** Apply a transform to a month and return new AppData; auto-persists. */
@@ -353,8 +354,30 @@ export const useStore = create<State>((set, get) => ({
   data: seed(),
   loaded: false,
   view: "month",
+  syncNotice: null,
+  dismissSyncNotice: () => set({ syncNotice: null }),
 
   init: async () => {
+    onSync((e) => {
+      if (e.kind === "remote") set({ data: e.data });
+      if (e.kind === "conflict")
+        set({
+          data: e.data,
+          syncNotice: {
+            tone: "warn",
+            text: "Nel frattempo i dati sono stati modificati da un altro dispositivo: ho caricato la versione aggiornata e l'ultima modifica fatta qui non è stata salvata.",
+          },
+        });
+      if (e.kind === "offline")
+        set({
+          syncNotice: {
+            tone: "warn",
+            text: "Server non raggiungibile: le modifiche restano qui e verranno salvate appena torna disponibile.",
+          },
+        });
+      if (e.kind === "online")
+        set((s) => (s.syncNotice?.text.startsWith("Server") ? { syncNotice: null } : {}));
+    });
     const loaded = await loadData();
     const data = loaded && loaded.months?.length ? loaded : seed();
     if (!loaded) persist(data);

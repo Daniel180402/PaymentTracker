@@ -1,0 +1,16 @@
+**
+!package.json
+!package-lock.json
+!index.html
+!vite.config.ts
+!tsconfig.json
+!tsconfig.node.json
+!public/**
+!src/**
+!scripts/compress.mjs
+!server/go.mod
+!server/*.go
+**/*.test.ts
+server/*_test.go
+**/.DS_Store
+**/*.pdf

@@ -25,3 +25,8 @@ dist-ssr
 
 # Estratti conto (dati personali)
 *.pdf
+
+# Web app embedded by the Go server at image build time
+!server/dist/
+server/dist/*
+!server/dist/.gitkeep

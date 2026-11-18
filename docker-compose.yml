@@ -1,0 +1,30 @@
+services:
+  paymenttracker:
+    build: .
+    image: paymenttracker:latest
+    container_name: paymenttracker
+    restart: unless-stopped
+    ports:
+      - "8080:8080"
+    volumes:
+      - paymenttracker-data:/data
+    environment:
+      # Daily copies of the data kept in /data/backups
+      PT_BACKUPS: "30"
+      # Uncomment to ask for a username and password
+      # PT_USER: casa
+      # PT_PASSWORD: cambiami
+    # Hardening: the container can only write to its data volume
+    read_only: true
+    cap_drop: [ALL]
+    security_opt: ["no-new-privileges:true"]
+    mem_limit: 64m
+    cpus: 0.5
+    logging:
+      driver: local
+      options:
+        max-size: 1m
+        max-file: "2"
+
+volumes:
+  paymenttracker-data:
