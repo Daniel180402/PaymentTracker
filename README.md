@@ -29,6 +29,14 @@ di arrotondamento.
   scelta viene proposta in automatico al prossimo import. Reimportare lo stesso
   file non crea doppioni, e i pagamenti "in attesa" vengono aggiornati quando
   la banca li contabilizza.
+- **Import di chiusura** — se l'estratto contiene uno stipendio più recente di
+  quello del mese aperto, l'app chiede cosa fare: chiudere il mese (le spese
+  fino al nuovo stipendio completano il mese corrente, le altre vanno nel
+  nuovo), trattarlo come 13ª/14ª/premio restando nel mese corrente, oppure
+  aprire solo il nuovo mese.
+- **Entrate extra** — per ogni accredito (contributo casa, 13ª/14ª, rimborsi,
+  regali…) l'app chiede che tipo di entrata è; uno storno può invece ridurre
+  la spesa di una categoria.
 
 ## Sviluppo
 
