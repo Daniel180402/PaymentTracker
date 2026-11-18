@@ -8,6 +8,7 @@ import {
   cleanLabel,
   findLatestSalary,
   mergeStatement,
+  monthRefs,
   normalizeDescription,
   txKeys,
 } from "./import/merge";
@@ -158,8 +159,12 @@ interface State {
   ) => void;
   deleteLedgerEntry: (id: string) => void;
 
-  /** Merge a parsed bank statement, starting from its latest salary. */
-  importStatement: (s: ParsedStatement) => ImportOutcome;
+  /**
+   * Merge a parsed bank statement, starting from its latest salary. With
+   * `closing`, the movements up to that salary complete the current month
+   * and the salary opens a new one.
+   */
+  importStatement: (s: ParsedStatement, opts?: { closing?: boolean }) => ImportOutcome;
   setInboxNote: (monthId: string, itemId: string, note: string) => void;
   /** Move an inbox item to the income table ("income") or to a section id. */
   classifyInbox: (monthId: string, itemId: string, target: string) => void;
@@ -168,20 +173,68 @@ interface State {
   ignoreInbox: (monthId: string, itemId: string) => void;
 }
 
+export interface MonthOutcome {
+  name: string;
+  created: boolean;
+  added: number;
+  updated: number;
+  skipped: number;
+}
+
 export type ImportOutcome =
   | { ok: false; error: string }
   | {
       ok: true;
-      monthName: string;
-      created: boolean;
       salaryDate: string;
       salaryAmount: number;
-      added: number;
-      updated: number;
-      skipped: number;
-      /** movements before the salary, left out on purpose */
+      closing: boolean;
+      months: MonthOutcome[];
+      /** movements before the period, left out on purpose */
       before: number;
     };
+
+export type ImportAnalysis =
+  | { ok: false; error: string }
+  | {
+      ok: true;
+      salaryDate: string;
+      salaryAmount: number;
+      /** the open month the statement would close, when the salary is new */
+      closable?: { name: string; salaryDate?: string };
+    };
+
+/** The latest open month started from an imported salary. */
+function currentSalaryMonth(data: AppData): Month | undefined {
+  return data.months.filter((m) => !m.closed && m.salaryTxKey).pop();
+}
+
+/** What an import would do, so the user can choose before applying it. */
+export function analyzeStatement(data: AppData, statement: ParsedStatement): ImportAnalysis {
+  const salary = findLatestSalary(statement.txs);
+  if (!salary) {
+    return {
+      ok: false,
+      error:
+        statement.txs.length === 0
+          ? "Nessun movimento trovato nel PDF. È un estratto conto Intesa Sanpaolo?"
+          : "Nessun accredito di stipendio trovato nell'estratto conto.",
+    };
+  }
+  const salaryKey = txKeys(statement.txs)[statement.txs.indexOf(salary)];
+  const known = data.months.some((m) => m.salaryTxKey === salaryKey);
+  const current = currentSalaryMonth(data);
+  const currentSalary = current && monthRefs(current).find((r) => r.key === current.salaryTxKey);
+  const isNewer = !currentSalary || currentSalary.date <= salary.date;
+  return {
+    ok: true,
+    salaryDate: salary.date,
+    salaryAmount: salary.amount,
+    closable:
+      !known && current && isNewer
+        ? { name: current.name, salaryDate: currentSalary?.date }
+        : undefined,
+  };
+}
 
 /** Put an imported row back among the movements to classify. */
 function rowToInbox(r: Row): InboxItem[] {
@@ -335,11 +388,13 @@ export const useStore = create<State>((set, get) => ({
         note: note.trim() || undefined,
         monthId,
       };
-      // start a fresh month from the just-closed one as a template
-      const next = newMonth(monthLabelFromDate(), closed);
+      // continue on a month already opened (e.g. by a closing import),
+      // otherwise start a fresh one from the just-closed month as a template
+      const open = months.filter((m) => !m.closed).pop();
+      const next = open ?? newMonth(monthLabelFromDate(), closed);
       const data: AppData = {
         ...s.data,
-        months: [...months, next],
+        months: open ? months : [...months, next],
         ledger: [...s.data.ledger, entry],
         activeMonthId: next.id,
       };
@@ -384,20 +439,54 @@ export const useStore = create<State>((set, get) => ({
       return { data };
     }),
 
-  importStatement: (statement) => {
+  importStatement: (statement, opts = {}) => {
     const cur = get().data;
-    const salary = findLatestSalary(statement.txs);
-    if (!salary) {
+    const analysis = analyzeStatement(cur, statement);
+    if (!analysis.ok) return analysis;
+    const salary = findLatestSalary(statement.txs)!;
+    const keys = txKeys(statement.txs);
+    const salaryKey = keys[statement.txs.indexOf(salary)];
+    const active = cur.months.find((m) => m.id === cur.activeMonthId);
+    const rules = cur.rules ?? {};
+
+    if (opts.closing && analysis.closable) {
+      // 1) complete the current month with what happened before the new salary
+      const old = currentSalaryMonth(cur)!;
+      const oldIdx = keys.indexOf(old.salaryTxKey!);
+      const oldTx = oldIdx >= 0 ? statement.txs[oldIdx] : null;
+      const afterDate = analysis.closable.salaryDate;
+      const r1 = mergeStatement(old, statement.txs, oldTx, rules, uid, {
+        afterDate,
+        untilSeq: salary.seq,
+      });
+      // 2) the new salary opens the next month
+      const fresh = newMonth(monthLabelFromDate(new Date(`${salary.date}T12:00:00`)), old);
+      const r2 = mergeStatement(fresh, statement.txs, salary, rules, uid);
+
+      const inOld = (t: (typeof statement.txs)[number]) =>
+        oldTx ? t.seq > oldTx.seq : afterDate != null && t.date > afterDate;
+      const before = statement.txs.filter(
+        (t) => t.seq < salary.seq && t !== oldTx && !inOld(t),
+      ).length;
+
+      const months = [...cur.months.map((m) => (m.id === old.id ? r1.month : m)), r2.month];
+      // stay on the old month while it still has movements to classify
+      const activeMonthId = r1.month.inbox?.length ? old.id : r2.month.id;
+      const data = { ...cur, months, activeMonthId };
+      persist(data);
+      set({ data, view: "month" });
       return {
-        ok: false,
-        error:
-          statement.txs.length === 0
-            ? "Nessun movimento trovato nel PDF. È un estratto conto Intesa Sanpaolo?"
-            : "Nessun accredito di stipendio trovato nell'estratto conto.",
+        ok: true,
+        salaryDate: salary.date,
+        salaryAmount: salary.amount,
+        closing: true,
+        before,
+        months: [
+          { name: r1.month.name, created: false, added: r1.added, updated: r1.updated, skipped: r1.skipped },
+          { name: r2.month.name, created: true, added: r2.added, updated: r2.updated, skipped: r2.skipped },
+        ],
       };
     }
-    const salaryKey = txKeys(statement.txs)[statement.txs.indexOf(salary)];
-    const active = cur.months.find((m) => m.id === cur.activeMonthId);
 
     let target =
       cur.months.find((m) => m.salaryTxKey === salaryKey) ??
@@ -413,7 +502,7 @@ export const useStore = create<State>((set, get) => ({
       target = newMonth(monthLabelFromDate(new Date(`${salary.date}T12:00:00`)), active);
     }
 
-    const r = mergeStatement(target, statement.txs, salary, cur.rules ?? {}, uid);
+    const r = mergeStatement(target, statement.txs, salary, rules, uid);
     const months = created
       ? [...cur.months, r.month]
       : cur.months.map((m) => (m.id === r.month.id ? r.month : m));
@@ -423,14 +512,13 @@ export const useStore = create<State>((set, get) => ({
 
     return {
       ok: true,
-      monthName: r.month.name,
-      created,
       salaryDate: salary.date,
       salaryAmount: salary.amount,
-      added: r.added,
-      updated: r.updated,
-      skipped: r.skipped,
+      closing: false,
       before: statement.txs.filter((t) => t.seq < salary.seq).length,
+      months: [
+        { name: r.month.name, created, added: r.added, updated: r.updated, skipped: r.skipped },
+      ],
     };
   },
 
