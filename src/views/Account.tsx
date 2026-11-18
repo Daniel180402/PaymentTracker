@@ -4,9 +4,11 @@ import type { LedgerEntry } from "../types";
 import { accountTotal, ledgerWithRunning, useStore } from "../store";
 import { formatEur, formatSignedEur, parseEur } from "../money";
 import { Modal } from "../components/Modal";
+import { PastMonthsDialog } from "../components/PastMonthsDialog";
 import {
   IconArrowDown,
   IconArrowUp,
+  IconCalendar,
   IconPlus,
   IconSparkle,
   IconTrash,
@@ -35,6 +37,8 @@ export function Account() {
   const deleteLedgerEntry = useStore((s) => s.deleteLedgerEntry);
 
   const [editing, setEditing] = useState<Editing>(null);
+  const [pastOpen, setPastOpen] = useState(false);
+  const [removing, setRemoving] = useState<LedgerEntry | null>(null);
   const rows = ledgerWithRunning(ledger);
   const total = accountTotal(ledger);
 
@@ -60,6 +64,13 @@ export function Account() {
           </div>
         </div>
         <button
+          onClick={() => setPastOpen(true)}
+          title="Inserisci surplus e deficit dei mesi prima dell'app"
+          className="flex items-center gap-2 px-4 h-9 rounded-lg border border-ink-700 text-sm font-medium text-slate-200 hover:border-brand-500 transition"
+        >
+          <IconCalendar size={16} /> Mesi passati
+        </button>
+        <button
           onClick={() => setEditing({ mode: "new" })}
           className="flex items-center gap-2 px-4 h-9 rounded-lg bg-brand-600 hover:bg-brand-500 text-sm font-semibold text-white transition"
         >
@@ -69,8 +80,20 @@ export function Account() {
 
       <div className="flex-1 overflow-y-auto px-7 py-6">
         {rows.length === 0 ? (
-          <div className="grid place-items-center h-full text-slate-500 text-sm">
-            Nessun movimento. Chiudi un mese o aggiungi una cifra straordinaria.
+          <div className="grid place-items-center h-full text-center">
+            <div className="max-w-sm">
+              <p className="text-slate-300 font-medium mb-1">Il conto è ancora vuoto</p>
+              <p className="text-slate-500 text-sm mb-4">
+                Inserisci il surplus dei mesi passati per partire dal saldo reale. Poi ogni
+                mese chiuso si aggiungerà da solo.
+              </p>
+              <button
+                onClick={() => setPastOpen(true)}
+                className="inline-flex items-center gap-2 px-5 py-2.5 rounded-xl bg-brand-600 hover:bg-brand-500 text-white text-sm font-semibold transition"
+              >
+                <IconCalendar size={16} /> Inserisci i mesi passati
+              </button>
+            </div>
           </div>
         ) : (
           <div className="rounded-2xl border border-ink-700 bg-ink-850/60 overflow-hidden">
@@ -108,6 +131,11 @@ export function Account() {
                               <IconSparkle size={10} /> extra
                             </span>
                           )}
+                          {e.kind === "past" && (
+                            <span className="shrink-0 text-[10px] text-slate-400 bg-ink-700/60 border border-ink-600 rounded-full px-1.5 py-0.5">
+                              mese passato
+                            </span>
+                          )}
                         </div>
                         {e.note && (
                           <div className="text-xs text-slate-500 truncate">{e.note}</div>
@@ -128,10 +156,9 @@ export function Account() {
                         <button
                           onClick={(ev) => {
                             ev.stopPropagation();
-                            if (confirm("Eliminare questo movimento?"))
-                              deleteLedgerEntry(e.id);
+                            setRemoving(e);
                           }}
-                          className="text-slate-700 hover:text-bad-400 opacity-0 group-hover:opacity-100 transition"
+                          className="text-slate-600 hover:text-bad-400 transition"
                           title="Elimina"
                         >
                           <IconTrash size={15} />
@@ -145,6 +172,46 @@ export function Account() {
           </div>
         )}
       </div>
+
+      <PastMonthsDialog open={pastOpen} onClose={() => setPastOpen(false)} />
+
+      {/* in-app confirmation: window.confirm() does nothing inside Tauri */}
+      <Modal
+        open={removing != null}
+        title="Elimina movimento"
+        icon={<IconTrash size={18} />}
+        onClose={() => setRemoving(null)}
+        footer={
+          <>
+            <button
+              onClick={() => setRemoving(null)}
+              className="px-4 py-2 rounded-lg text-sm font-medium text-slate-300 hover:bg-ink-700/60 transition"
+            >
+              Annulla
+            </button>
+            <button
+              onClick={() => {
+                if (removing) deleteLedgerEntry(removing.id);
+                setRemoving(null);
+              }}
+              className="px-4 py-2 rounded-lg text-sm font-semibold bg-bad-500 hover:bg-bad-400 text-white transition"
+            >
+              Elimina
+            </button>
+          </>
+        }
+      >
+        <p className="text-sm text-slate-300">
+          Eliminare <span className="text-white font-medium">{removing?.label}</span> (
+          <span className="tabular">{removing && formatSignedEur(removing.amount)}</span>) dal
+          conto?
+        </p>
+        {removing?.kind === "month" && (
+          <p className="text-xs text-slate-400 mt-2">
+            Il mese resta chiuso: per rimetterlo nel conto riaprilo e chiudilo di nuovo.
+          </p>
+        )}
+      </Modal>
 
       <EntryModal
         editing={editing}
