@@ -1,5 +1,11 @@
-import { useRef, useState } from "react";
-import { analyzeStatement, useStore, type ImportAnalysis, type ImportOutcome } from "../store";
+import { useRef, useState, type ReactNode } from "react";
+import {
+  analyzeStatement,
+  useStore,
+  type ImportAnalysis,
+  type ImportMode,
+  type ImportOutcome,
+} from "../store";
 import type { ParsedStatement } from "../import/types";
 import { formatEur } from "../money";
 import { Modal } from "./Modal";
@@ -18,7 +24,7 @@ export function ImportStatement() {
   const input = useRef<HTMLInputElement>(null);
   const [busy, setBusy] = useState(false);
   const [phase, setPhase] = useState<Phase>({ kind: "idle" });
-  const [closing, setClosing] = useState(false);
+  const [mode, setMode] = useState<ImportMode>("closing");
   const [warning, setWarning] = useState<string | null>(null);
 
   const onFile = async (file: File | undefined) => {
@@ -38,7 +44,7 @@ export function ImportStatement() {
         setPhase({ kind: "done", outcome: analysis });
       } else if (analysis.closable) {
         // a salary newer than the open month: ask whether this closes it
-        setClosing(true);
+        setMode("closing");
         setPhase({ kind: "confirm", statement, analysis });
       } else {
         setPhase({ kind: "done", outcome: importStatement(statement) });
@@ -75,11 +81,11 @@ export function ImportStatement() {
       {phase.kind === "confirm" && (
         <ConfirmDialog
           analysis={phase.analysis}
-          closing={closing}
-          setClosing={setClosing}
+          mode={mode}
+          setMode={setMode}
           onCancel={close}
           onConfirm={() =>
-            setPhase({ kind: "done", outcome: importStatement(phase.statement, { closing }) })
+            setPhase({ kind: "done", outcome: importStatement(phase.statement, { mode }) })
           }
         />
       )}
@@ -95,14 +101,14 @@ export function ImportStatement() {
 
 function ConfirmDialog({
   analysis,
-  closing,
-  setClosing,
+  mode,
+  setMode,
   onCancel,
   onConfirm,
 }: {
   analysis: Extract<ImportAnalysis, { ok: true }>;
-  closing: boolean;
-  setClosing: (v: boolean) => void;
+  mode: ImportMode;
+  setMode: (v: ImportMode) => void;
   onCancel: () => void;
   onConfirm: () => void;
 }) {
@@ -141,29 +147,36 @@ function ConfirmDialog({
         {current.salaryDate && <> ({fmtDate(current.salaryDate)})</>}.
       </p>
 
-      <label className="flex gap-3 rounded-xl border border-ink-700 bg-ink-900/50 p-3 cursor-pointer has-[:checked]:border-brand-500/60 has-[:checked]:bg-brand-500/5 transition">
-        <input
-          type="checkbox"
-          checked={closing}
-          onChange={(e) => setClosing(e.target.checked)}
-          className="mt-0.5 accent-brand-500"
+      <div className="space-y-2">
+        <Choice
+          checked={mode === "closing"}
+          onSelect={() => setMode("closing")}
+          title="Import di chiusura: è il nuovo stipendio"
+          detail={
+            <>
+              Le spese fino al nuovo stipendio completano <b>{current.name}</b>, quelle dopo vanno
+              nel nuovo mese. Poi classifichi le ultime spese e premi "Chiudi mese".
+            </>
+          }
         />
-        <span className="text-sm">
-          <span className="block font-medium text-slate-100">
-            Import di chiusura: contiene il nuovo stipendio
-          </span>
-          <span className="block text-xs text-slate-400 mt-0.5">
-            Le spese fino al nuovo stipendio completano <b>{current.name}</b>, quelle dopo
-            vanno nel nuovo mese. Poi classifichi le ultime spese e premi "Chiudi mese".
-          </span>
-        </span>
-      </label>
-      {!closing && (
-        <p className="text-xs text-slate-500 mt-3">
-          Senza chiusura viene creato solo il nuovo mese: le spese prima del nuovo stipendio non
-          vengono importate.
-        </p>
-      )}
+        <Choice
+          checked={mode === "extra"}
+          onSelect={() => setMode("extra")}
+          title="Non è uno stipendio: 13ª, 14ª, premio…"
+          detail={
+            <>
+              Resta tutto in <b>{current.name}</b>: l'accredito finisce tra le entrate da
+              classificare e non apre un nuovo mese.
+            </>
+          }
+        />
+        <Choice
+          checked={mode === "new"}
+          onSelect={() => setMode("new")}
+          title="Apri solo il nuovo mese"
+          detail="Le spese prima del nuovo stipendio non vengono importate."
+        />
+      </div>
     </Modal>
   );
 }
@@ -209,7 +222,7 @@ function ResultDialog({
               <div className="text-white font-medium mb-1">
                 {m.name}{" "}
                 <span className="text-xs font-normal text-slate-500">
-                  {m.created ? "· nuovo mese" : outcome.closing ? "· completato" : "· aggiornato"}
+                  {m.created ? "· nuovo mese" : outcome.mode === "closing" ? "· completato" : "· aggiornato"}
                 </span>
               </div>
               <ul className="space-y-0.5 text-slate-400">
@@ -238,7 +251,7 @@ function ResultDialog({
               movimenti precedenti esclusi
             </p>
           )}
-          {outcome.closing && (
+          {outcome.mode === "closing" && (
             <p className="text-xs text-brand-400">
               Classifica le ultime spese di {outcome.months[0].name} e poi premi "Chiudi mese".
             </p>
@@ -247,5 +260,37 @@ function ResultDialog({
       )}
       {warning && <p className="text-xs text-brand-400 mt-3">{warning}</p>}
     </Modal>
+  );
+}
+
+function Choice({
+  checked,
+  onSelect,
+  title,
+  detail,
+}: {
+  checked: boolean;
+  onSelect: () => void;
+  title: string;
+  detail: ReactNode;
+}) {
+  return (
+    <label
+      className={`flex gap-3 rounded-xl border p-3 cursor-pointer transition ${
+        checked ? "border-brand-500/60 bg-brand-500/5" : "border-ink-700 bg-ink-900/50 hover:border-ink-600"
+      }`}
+    >
+      <input
+        type="radio"
+        name="import-mode"
+        checked={checked}
+        onChange={onSelect}
+        className="mt-0.5 accent-brand-500"
+      />
+      <span className="text-sm">
+        <span className="block font-medium text-slate-100">{title}</span>
+        <span className="block text-xs text-slate-400 mt-0.5">{detail}</span>
+      </span>
+    </label>
   );
 }

@@ -160,11 +160,14 @@ interface State {
   deleteLedgerEntry: (id: string) => void;
 
   /**
-   * Merge a parsed bank statement, starting from its latest salary. With
-   * `closing`, the movements up to that salary complete the current month
-   * and the salary opens a new one.
+   * Merge a parsed bank statement, starting from its latest salary. When that
+   * salary is newer than the open month:
+   * - "closing": movements up to it complete the open month, it opens a new one;
+   * - "new": it just opens a new month;
+   * - "extra": it is not a salary (13ª/14ª, bonus…): everything stays in the
+   *   open month and it goes among the credits to classify.
    */
-  importStatement: (s: ParsedStatement, opts?: { closing?: boolean }) => ImportOutcome;
+  importStatement: (s: ParsedStatement, opts?: { mode?: ImportMode }) => ImportOutcome;
   setInboxNote: (monthId: string, itemId: string, note: string) => void;
   /** Move an inbox item to the income table ("income") or to a section id. */
   classifyInbox: (monthId: string, itemId: string, target: string) => void;
@@ -187,7 +190,7 @@ export type ImportOutcome =
       ok: true;
       salaryDate: string;
       salaryAmount: number;
-      closing: boolean;
+      mode: ImportMode | "normal";
       months: MonthOutcome[];
       /** movements before the period, left out on purpose */
       before: number;
@@ -203,14 +206,29 @@ export type ImportAnalysis =
       closable?: { name: string; salaryDate?: string };
     };
 
+export type ImportMode = "closing" | "new" | "extra";
+
 /** The latest open month started from an imported salary. */
 function currentSalaryMonth(data: AppData): Month | undefined {
   return data.months.filter((m) => !m.closed && m.salaryTxKey).pop();
 }
 
+/** Latest salary of the statement, skipping credits the user already said
+ *  are not a salary (e.g. a 13ª imported into a month as a normal credit). */
+function pickSalary(data: AppData, txs: ParsedStatement["txs"]) {
+  const salaryKeys = new Set(data.months.map((m) => m.salaryTxKey));
+  const notSalary = new Set(
+    data.months
+      .flatMap((m) => [...monthRefs(m).map((r) => r.key), ...(m.ignoredTxKeys ?? [])])
+      .filter((k) => !salaryKeys.has(k)),
+  );
+  const keys = txKeys(txs);
+  return findLatestSalary(txs.filter((_, i) => !notSalary.has(keys[i])));
+}
+
 /** What an import would do, so the user can choose before applying it. */
 export function analyzeStatement(data: AppData, statement: ParsedStatement): ImportAnalysis {
-  const salary = findLatestSalary(statement.txs);
+  const salary = pickSalary(data, statement.txs);
   if (!salary) {
     return {
       ok: false,
@@ -443,18 +461,43 @@ export const useStore = create<State>((set, get) => ({
     const cur = get().data;
     const analysis = analyzeStatement(cur, statement);
     if (!analysis.ok) return analysis;
-    const salary = findLatestSalary(statement.txs)!;
+    const salary = pickSalary(cur, statement.txs)!;
     const keys = txKeys(statement.txs);
     const salaryKey = keys[statement.txs.indexOf(salary)];
     const active = cur.months.find((m) => m.id === cur.activeMonthId);
     const rules = cur.rules ?? {};
+    const mode = analysis.closable ? (opts.mode ?? "new") : "normal";
 
-    if (opts.closing && analysis.closable) {
+    // the open month and its own salary (in the file or only remembered by date)
+    const old = currentSalaryMonth(cur);
+    const oldIdx = old ? keys.indexOf(old.salaryTxKey!) : -1;
+    const oldTx = oldIdx >= 0 ? statement.txs[oldIdx] : null;
+    const afterDate = analysis.closable?.salaryDate;
+
+    if (mode === "extra" && old) {
+      // not a new salary: everything after the open month's salary stays there
+      const r = mergeStatement(old, statement.txs, oldTx, rules, uid, { afterDate });
+      const data = {
+        ...cur,
+        months: cur.months.map((m) => (m.id === old.id ? r.month : m)),
+        activeMonthId: old.id,
+      };
+      persist(data);
+      set({ data, view: "month" });
+      return {
+        ok: true,
+        salaryDate: salary.date,
+        salaryAmount: salary.amount,
+        mode,
+        before: statement.txs.filter((t) =>
+          oldTx ? t.seq <= oldTx.seq : afterDate == null || t.date <= afterDate,
+        ).length,
+        months: [{ name: old.name, created: false, added: r.added, updated: r.updated, skipped: r.skipped }],
+      };
+    }
+
+    if (mode === "closing" && old) {
       // 1) complete the current month with what happened before the new salary
-      const old = currentSalaryMonth(cur)!;
-      const oldIdx = keys.indexOf(old.salaryTxKey!);
-      const oldTx = oldIdx >= 0 ? statement.txs[oldIdx] : null;
-      const afterDate = analysis.closable.salaryDate;
       const r1 = mergeStatement(old, statement.txs, oldTx, rules, uid, {
         afterDate,
         untilSeq: salary.seq,
@@ -479,7 +522,7 @@ export const useStore = create<State>((set, get) => ({
         ok: true,
         salaryDate: salary.date,
         salaryAmount: salary.amount,
-        closing: true,
+        mode,
         before,
         months: [
           { name: r1.month.name, created: false, added: r1.added, updated: r1.updated, skipped: r1.skipped },
@@ -514,7 +557,7 @@ export const useStore = create<State>((set, get) => ({
       ok: true,
       salaryDate: salary.date,
       salaryAmount: salary.amount,
-      closing: false,
+      mode,
       before: statement.txs.filter((t) => t.seq < salary.seq).length,
       months: [
         { name: r.month.name, created, added: r.added, updated: r.updated, skipped: r.skipped },
