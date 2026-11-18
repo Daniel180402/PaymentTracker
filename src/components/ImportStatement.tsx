@@ -41,7 +41,7 @@ export function ImportStatement() {
       <button
         onClick={() => input.current?.click()}
         disabled={busy}
-        className="flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-medium border border-dashed border-ink-600 text-slate-300 hover:text-white hover:border-brand-500 transition disabled:opacity-60"
+        className="flex items-center gap-2.5 px-3 py-2.5 rounded-xl text-[13px] whitespace-nowrap font-medium border border-dashed border-ink-600 text-slate-300 hover:text-white hover:border-brand-500 transition disabled:opacity-60"
       >
         <IconUpload size={18} />
         {busy ? "Lettura in corso…" : "Importa estratto conto"}
