@@ -102,6 +102,13 @@ describe("pastMonthSlots", () => {
     expect(slots[0].name).toBe("Settembre 2026");
   });
 
+  it("offers again a month deleted from the account", () => {
+    const past = (label: string, date: string) => ({ id: label, kind: "past" as const, date, label, amount: 100 });
+    const ledger = [past("Ottobre 2026", "2026-10-31"), past("Agosto 2026", "2026-08-31")];
+    const slots = pastMonthSlots({ ...base, months: [named("Novembre 2026")], ledger }, 2);
+    expect(slots.map((s) => s.name)).toEqual(["Settembre 2026", "Luglio 2026"]);
+  });
+
   it("uses today when there is no month at all", () => {
     expect(pastMonthSlots(base, 1, new Date(2026, 10, 18))[0].name).toBe("Ottobre 2026");
   });

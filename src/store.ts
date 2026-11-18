@@ -59,19 +59,21 @@ function slot(idx: number): PastMonthSlot {
 }
 
 /**
- * The `count` months before everything the app already knows (tracked months
- * and past months entered earlier), newest first. Without any month it starts
- * from the month before `today`.
+ * `count` months before the first tracked month, newest first, skipping the
+ * ones already in the account (so a deleted month can be entered again).
+ * Without any month it starts from the month before `today`.
  */
 export function pastMonthSlots(data: AppData, count: number, today = new Date()): PastMonthSlot[] {
-  const known = [
-    ...data.months.map((m) => m.name),
-    ...data.ledger.filter((e) => e.kind !== "manual").map((e) => e.label),
-  ]
-    .map(monthIndex)
-    .filter((i): i is number => i != null);
-  const first = known.length ? Math.min(...known) : today.getFullYear() * 12 + today.getMonth();
-  return Array.from({ length: count }, (_, k) => slot(first - 1 - k));
+  const index = (names: string[]) =>
+    names.map(monthIndex).filter((i): i is number => i != null);
+  const tracked = index(data.months.map((m) => m.name));
+  const entered = new Set(
+    index(data.ledger.filter((e) => e.kind !== "manual").map((e) => e.label)),
+  );
+  let idx = (tracked.length ? Math.min(...tracked) : today.getFullYear() * 12 + today.getMonth()) - 1;
+  const out: PastMonthSlot[] = [];
+  for (; out.length < count; idx--) if (!entered.has(idx)) out.push(slot(idx));
+  return out;
 }
 
 /** An open month with nothing in it yet (template rows at 0 don't count). */
