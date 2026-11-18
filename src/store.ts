@@ -26,6 +26,28 @@ export function monthLabelFromDate(d = new Date()): string {
   return `${MONTHS_IT[d.getMonth()]} ${d.getFullYear()}`;
 }
 
+/** "Novembre 2026" -> 2026 * 12 + 10, or null for custom names. */
+function monthIndex(name: string): number | null {
+  const m = /^(\p{L}+)\s+(\d{4})$/u.exec(name.trim());
+  const i = m ? MONTHS_IT.findIndex((x) => x.toLowerCase() === m[1].toLowerCase()) : -1;
+  return m && i >= 0 ? Number(m[2]) * 12 + i : null;
+}
+
+/** Name for a new month: the one after the latest existing month, so that
+ *  repeated clicks never produce two months with the same name. */
+export function nextMonthName(months: Month[]): string {
+  const indexes = months.map((m) => monthIndex(m.name)).filter((i): i is number => i != null);
+  if (indexes.length === 0) return monthLabelFromDate();
+  const next = Math.max(...indexes) + 1;
+  return `${MONTHS_IT[next % 12]} ${Math.floor(next / 12)}`;
+}
+
+/** An open month with nothing in it yet (template rows at 0 don't count). */
+export function isMonthEmpty(m: Month): boolean {
+  const rows = [...m.income, ...m.sections.flatMap((s) => s.rows)];
+  return !m.closed && !m.salaryTxKey && !m.inbox?.length && rows.every((r) => !r.amount);
+}
+
 const DEFAULT_SECTION_NAMES = ["Bisogni", "Sfizi", "Risparmi"];
 
 function newMonth(name: string, template?: Month): Month {
@@ -310,8 +332,14 @@ export const useStore = create<State>((set, get) => ({
 
   addMonth: (name) => {
     const cur = get().data;
+    // an empty month is already waiting: go there instead of stacking another
+    const empty = cur.months.find(isMonthEmpty);
+    if (empty && !name?.trim()) {
+      set({ data: { ...cur, activeMonthId: empty.id }, view: "month" });
+      return;
+    }
     const template = cur.months.find((m) => m.id === cur.activeMonthId);
-    const m = newMonth(name?.trim() || monthLabelFromDate(), template);
+    const m = newMonth(name?.trim() || nextMonthName(cur.months), template);
     const data = { ...cur, months: [...cur.months, m], activeMonthId: m.id };
     persist(data);
     set({ data, view: "month" });
@@ -409,7 +437,7 @@ export const useStore = create<State>((set, get) => ({
       // continue on a month already opened (e.g. by a closing import),
       // otherwise start a fresh one from the just-closed month as a template
       const open = months.filter((m) => !m.closed).pop();
-      const next = open ?? newMonth(monthLabelFromDate(), closed);
+      const next = open ?? newMonth(nextMonthName(months), closed);
       const data: AppData = {
         ...s.data,
         months: open ? months : [...months, next],

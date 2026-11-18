@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { analyzeStatement } from "./store";
+import { analyzeStatement, isMonthEmpty, nextMonthName } from "./store";
 import type { AppData, Month, TxRef } from "./types";
 import type { BankTx } from "./import/types";
 import { txKeys, toRef } from "./import/merge";
@@ -58,5 +58,25 @@ describe("analyzeStatement", () => {
   it("does not ask again when that credit was ignored", () => {
     const a = analyzeStatement(data(month({ ignoredTxKeys: [keys[2]] })), { txs });
     expect(a.ok && a.closable).toBeFalsy();
+  });
+});
+
+describe("month helpers", () => {
+  const named = (name: string): Month => ({ ...month(), id: name, name, salaryTxKey: undefined, income: [] });
+
+  it("names a new month after the latest one, across years", () => {
+    expect(nextMonthName([named("Ottobre 2026"), named("Novembre 2026")])).toBe("Dicembre 2026");
+    expect(nextMonthName([named("Dicembre 2026"), named("Vacanze")])).toBe("Gennaio 2027");
+  });
+
+  it("never repeats a name when the same month exists twice", () => {
+    expect(nextMonthName([named("Novembre 2026"), named("Novembre 2026")])).toBe("Dicembre 2026");
+  });
+
+  it("treats template rows at zero as empty", () => {
+    const m = { ...named("Dicembre 2026"), sections: [{ id: "b", name: "Bisogni", rows: [{ id: "r", name: "Affitto", amount: 0 }] }] };
+    expect(isMonthEmpty(m)).toBe(true);
+    expect(isMonthEmpty({ ...m, income: [{ id: "i", name: "Stipendio", amount: 100 }] })).toBe(false);
+    expect(isMonthEmpty(month())).toBe(false);
   });
 });
