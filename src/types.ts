@@ -67,7 +67,8 @@ export interface Month {
   result?: number;
 }
 
-export type LedgerKind = "month" | "manual";
+/** "past": result of a month before the app was used, entered by hand. */
+export type LedgerKind = "month" | "manual" | "past";
 
 export interface LedgerEntry {
   id: string;
