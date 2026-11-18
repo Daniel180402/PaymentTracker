@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { analyzeStatement, isMonthEmpty, nextMonthName } from "./store";
+import { analyzeStatement, isMonthEmpty, nextMonthName, pastMonthSlots } from "./store";
 import type { AppData, Month, TxRef } from "./types";
 import type { BankTx } from "./import/types";
 import { txKeys, toRef } from "./import/merge";
@@ -78,5 +78,38 @@ describe("month helpers", () => {
     expect(isMonthEmpty(m)).toBe(true);
     expect(isMonthEmpty({ ...m, income: [{ id: "i", name: "Stipendio", amount: 100 }] })).toBe(false);
     expect(isMonthEmpty(month())).toBe(false);
+  });
+});
+
+describe("pastMonthSlots", () => {
+  const base: AppData = { version: 1, months: [], ledger: [], activeMonthId: null };
+  const named = (name: string): Month => ({ ...month(), id: name, name });
+
+  it("starts from the month before the first tracked one, newest first", () => {
+    const slots = pastMonthSlots({ ...base, months: [named("Novembre 2026"), named("Dicembre 2026")] }, 3);
+    expect(slots.map((s) => s.name)).toEqual(["Ottobre 2026", "Settembre 2026", "Agosto 2026"]);
+    expect(slots[0]).toMatchObject({ start: "2026-10-01", end: "2026-10-31" });
+  });
+
+  it("goes back across years and handles February", () => {
+    const slots = pastMonthSlots({ ...base, months: [named("Marzo 2028")] }, 3);
+    expect(slots.map((s) => s.end)).toEqual(["2028-02-29", "2028-01-31", "2027-12-31"]);
+  });
+
+  it("skips past months already entered", () => {
+    const ledger = [{ id: "p", kind: "past" as const, date: "2026-10-31", label: "Ottobre 2026", amount: 100 }];
+    const slots = pastMonthSlots({ ...base, months: [named("Novembre 2026")], ledger }, 1);
+    expect(slots[0].name).toBe("Settembre 2026");
+  });
+
+  it("offers again a month deleted from the account", () => {
+    const past = (label: string, date: string) => ({ id: label, kind: "past" as const, date, label, amount: 100 });
+    const ledger = [past("Ottobre 2026", "2026-10-31"), past("Agosto 2026", "2026-08-31")];
+    const slots = pastMonthSlots({ ...base, months: [named("Novembre 2026")], ledger }, 2);
+    expect(slots.map((s) => s.name)).toEqual(["Settembre 2026", "Luglio 2026"]);
+  });
+
+  it("uses today when there is no month at all", () => {
+    expect(pastMonthSlots(base, 1, new Date(2026, 10, 18))[0].name).toBe("Ottobre 2026");
   });
 });

@@ -33,13 +33,47 @@ function monthIndex(name: string): number | null {
   return m && i >= 0 ? Number(m[2]) * 12 + i : null;
 }
 
+const monthName = (idx: number) => `${MONTHS_IT[idx % 12]} ${Math.floor(idx / 12)}`;
+
 /** Name for a new month: the one after the latest existing month, so that
  *  repeated clicks never produce two months with the same name. */
 export function nextMonthName(months: Month[]): string {
   const indexes = months.map((m) => monthIndex(m.name)).filter((i): i is number => i != null);
   if (indexes.length === 0) return monthLabelFromDate();
-  const next = Math.max(...indexes) + 1;
-  return `${MONTHS_IT[next % 12]} ${Math.floor(next / 12)}`;
+  return monthName(Math.max(...indexes) + 1);
+}
+
+export interface PastMonthSlot {
+  name: string;
+  /** first and last day of the month, ISO */
+  start: string;
+  end: string;
+}
+
+function slot(idx: number): PastMonthSlot {
+  const y = Math.floor(idx / 12);
+  const m = idx % 12;
+  const mm = String(m + 1).padStart(2, "0");
+  const last = new Date(Date.UTC(y, m + 1, 0)).getUTCDate();
+  return { name: monthName(idx), start: `${y}-${mm}-01`, end: `${y}-${mm}-${last}` };
+}
+
+/**
+ * `count` months before the first tracked month, newest first, skipping the
+ * ones already in the account (so a deleted month can be entered again).
+ * Without any month it starts from the month before `today`.
+ */
+export function pastMonthSlots(data: AppData, count: number, today = new Date()): PastMonthSlot[] {
+  const index = (names: string[]) =>
+    names.map(monthIndex).filter((i): i is number => i != null);
+  const tracked = index(data.months.map((m) => m.name));
+  const entered = new Set(
+    index(data.ledger.filter((e) => e.kind !== "manual").map((e) => e.label)),
+  );
+  let idx = (tracked.length ? Math.min(...tracked) : today.getFullYear() * 12 + today.getMonth()) - 1;
+  const out: PastMonthSlot[] = [];
+  for (; out.length < count; idx--) if (!entered.has(idx)) out.push(slot(idx));
+  return out;
 }
 
 /** An open month with nothing in it yet (template rows at 0 don't count). */
@@ -175,6 +209,11 @@ interface State {
   reopenMonth: (monthId: string) => void;
 
   addManualEntry: (e: Omit<LedgerEntry, "id" | "kind">) => void;
+  /** Surplus/deficit of months before the app, plus an optional opening balance. */
+  addPastMonths: (
+    months: Array<{ slot: PastMonthSlot; amount: number }>,
+    opening?: { amount: number; date: string },
+  ) => void;
   updateLedgerEntry: (
     id: string,
     patch: Partial<Pick<LedgerEntry, "date" | "label" | "amount" | "note">>,
@@ -457,6 +496,29 @@ export const useStore = create<State>((set, get) => ({
       const data = { ...s.data, months, ledger, activeMonthId: monthId };
       persist(data);
       return { data, view: "month" };
+    }),
+
+  addPastMonths: (months, opening) =>
+    set((s) => {
+      const entries: LedgerEntry[] = months.map(({ slot, amount }) => ({
+        id: uid(),
+        kind: "past",
+        date: slot.end,
+        label: slot.name,
+        amount,
+      }));
+      if (opening && opening.amount !== 0) {
+        entries.push({
+          id: uid(),
+          kind: "manual",
+          date: opening.date,
+          label: "Saldo di partenza",
+          amount: opening.amount,
+        });
+      }
+      const data = { ...s.data, ledger: [...s.data.ledger, ...entries] };
+      persist(data);
+      return { data };
     }),
 
   addManualEntry: (e) =>

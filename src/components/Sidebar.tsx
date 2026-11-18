@@ -72,9 +72,18 @@ export function Sidebar() {
         >
           {formatSignedEur(total)}
         </div>
-        <div className="text-[11px] text-slate-500 mt-1">
-          {ledger.length} {ledger.length === 1 ? "movimento" : "movimenti"}
-        </div>
+        {ledger.length === 0 ? (
+          <button
+            onClick={() => setView("account")}
+            className="text-[11px] text-brand-400 hover:text-brand-300 mt-1 transition"
+          >
+            Inserisci i mesi passati →
+          </button>
+        ) : (
+          <div className="text-[11px] text-slate-500 mt-1">
+            {ledger.length} {ledger.length === 1 ? "movimento" : "movimenti"}
+          </div>
+        )}
       </div>
     </aside>
   );
