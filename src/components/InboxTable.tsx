@@ -71,9 +71,14 @@ function InboxRow({ month, item }: { month: Month; item: InboxItem }) {
     item.suggestion === INCOME_TARGET ||
     month.sections.some((s) => s.name === item.suggestion);
 
-  /** `label` names the row when the user did not write anything. */
+  /** `label` is the kind picked for a credit: it names the row, followed by
+   *  the user's note when there is one ("Contributo casa · Emanuela"). */
   const send = (target: string, label?: string) => {
-    const finalNote = note.trim() || label || "";
+    const typed = note.trim();
+    const finalNote =
+      label && typed && !typed.startsWith(label) && !CREDIT_KINDS.some((k) => typed.startsWith(k))
+        ? `${label} · ${typed}`
+        : typed || label || "";
     if (finalNote !== item.note) setInboxNote(month.id, item.id, finalNote);
     classifyInbox(month.id, item.id, target);
   };
