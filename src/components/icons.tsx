@@ -84,7 +84,20 @@ export const IconArrowDown = ({ className, size }: P) => (
   </svg>
 );
 
-export const IconSparkle = ({ className, size }: P) => (
+export const IconUpload = ({ className, size }: P) => (
+  <svg {...base(size)} className={className}>
+    <path d="M12 15V4M7 8.5 12 4l5 4.5" />
+    <path d="M4 15v3a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-3" />
+  </svg>
+);
+
+export const IconBank = ({ className, size }: P) => (
+  <svg {...base(size)} className={className}>
+    <path d="M3 9.5 12 4l9 5.5M5 10v8M9.5 10v8M14.5 10v8M19 10v8M3.5 20.5h17" />
+  </svg>
+);
+
+export const IconSparkle =({ className, size }: P) => (
   <svg {...base(size)} className={className}>
     <path d="M12 3l1.8 5.2L19 10l-5.2 1.8L12 17l-1.8-5.2L5 10l5.2-1.8Z" />
   </svg>
