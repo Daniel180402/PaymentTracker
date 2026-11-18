@@ -22,11 +22,21 @@ di arrotondamento.
   straordinarie aggiunte a mano), con data, importo, **saldo progressivo** e
   nota. Puoi aggiungere/modificare/eliminare i movimenti.
 
+- **Importa estratto conto** — carica il PDF "Lista movimenti" di Intesa
+  Sanpaolo: l'app trova l'accredito di stipendio più recente, lo mette nelle
+  Entrate e porta tutti i movimenti successivi in **Da classificare**. Per
+  ognuno scrivi cos'è e scegli la categoria; per gli esercenti ricorrenti la
+  scelta viene proposta in automatico al prossimo import. Reimportare lo stesso
+  file non crea doppioni, e i pagamenti "in attesa" vengono aggiornati quando
+  la banca li contabilizza.
+
 ## Sviluppo
 
 ```bash
 npm install
 npm run tauri dev      # avvia l'app in modalità sviluppo
+npm test               # test unitari (parser e import)
+STATEMENT_PDF=~/Downloads/lista_operazioni.pdf npm test   # verifica anche un PDF reale
 ```
 
 ## Build dell'app installabile
